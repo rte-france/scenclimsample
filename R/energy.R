@@ -10,12 +10,13 @@ matrixblockmean <- function(m, blockszi, blockszj){
   out
 }
 
+#' @export
 build_euclid_dist_matrix <- function(dt_series, block_id){
   unique_blocks <- unique(dt_series[[block_id]])
   nblocks <- length(unique_blocks)
   block_length <- dt_series[,.N, by = block_id][,mean(N)]
 
-  mat_A <- map(unique_blocks, function(ii_block)
+  mat_A <- purrr::map(unique_blocks, function(ii_block)
     fields::rdist(x1 = dt_series[.(ii_block),.SD,.SDcols = -c(block_id), on = block_id],
                   x2 = dt_series[,.SD,.SDcols = -c(block_id)]) %>%
       matrixblockmean(block_length, block_length)) %>%
@@ -23,3 +24,4 @@ build_euclid_dist_matrix <- function(dt_series, block_id){
 
   mat_A
 }
+

@@ -1,72 +1,119 @@
-## calcul des moyennes
-get_dt_score_mean <- function(array_sel, dt_complet, dt_complet_mean){
+#' compute average mean absolute error for all columns
+#' @param array_sample array of samples to test, one sample by column
+#' @param dt_series data.table of series
+#' @export
+get_dt_score_avg <- function(array_sample, dt_series){
 
-  dt_sel_mean <- map_dfr(seq(ncol(array_sel)), function(ii){
-    dt_complet[array_sel[, ii], colMeans(.SD), .SDcols = -"mcYear"]
+  # Average by block and average over all blocks
+  dt_avg_over_all_blocks <- dt_series[, colMeans(.SD), .SDcols = -"block_id"]
+  dt_avg <- dt_series[, colMeans(.SD), by = "block_id"]
+  setorder(dt_avg, block_id)
+
+  # loop over samples
+  dt_avg_sample <- purrr::map_dfr(seq(ncol(array_sample)), function(ii){
+    dt_avg[array_sample[, ii], colMeans(.SD), .SDcols = -"block_id"]
   })
-  dt_sel_mean$name_sel = colnames(array_sel)
-  setDT(dt_sel_mean)
+  dt_avg_sample$name_sample = colnames(array_sample)
+  data.table::setDT(dt_avg_sample)
 
-  ## score vs. 1000 années
-  dt_score_mean <- abs(dt_complet_mean[rep(1, nrow(dt_sel_mean))] - dt_sel_mean[,.SD, .SDcols = -"name_sel"])
-  dt_score_mean[,name_sel := dt_sel_mean$name_sel]
-  dt_score_mean
+  # scoring
+  dt_score_avg <- abs(dt_avg_over_all_blocks[rep(1, nrow(dt_avg_sample))] - dt_avg_sample[,.SD, .SDcols = -"name_sample"])
+  dt_score_avg[,name_sample := dt_avg_sample$name_sample]
+  dt_score_avg
 }
 
-## calcul des scores d'énergie
-get_dt_score_energy <- function(array_sel, l_mat_A){
+#' compute energy scores
+#' @param array_sample array of samples to test, one sample by column
+#' @param l_mat_A list of A matrices for the energy scores
+#' @description Matrix algebra for energy scores
+#' @export
+get_dt_score_energy <- function(array_sample, l_mat_A){
 
-  dt_score_energy <- imap_dfc(l_mat_A, function(mat_A, mat_A_name){
+  # Loop over A matrices
+  dt_score_energy <- purrr::imap_dfc(l_mat_A, function(mat_A, mat_A_name){
 
     Nyear_total <- nrow(mat_A)
     w0 <- array(1/Nyear_total, c(Nyear_total,1))
+
+    # precomputation
     mat_A_w0 <- mat_A %*% w0
     w0_mat_A_w0_half <- 0.5*t(w0) %*% mat_A %*% w0
 
-    vec_score_energy <- map_dbl(seq(ncol(array_sel)), function(ii){
+    # loop over samples
+    vec_score_energy <- purrr::map_dbl(seq(ncol(array_sample)), function(ii){
       ws <- array(0, c(Nyear_total,1))
-      ws[array_sel[, ii],1] <- 1/Nyear_total
+      ws[array_sample[, ii],1] <- 1/Nyear_total
 
+      # energy score
       t(ws) %*% mat_A_w0 - w0_mat_A_w0_half - 0.5*t(ws) %*% mat_A %*% ws
     })
 
-    data.table(vec_score_energy) %>% setnames(mat_A_name)
+    data.table::data.table(vec_score_energy) %>% data.table::setnames(mat_A_name)
   }) %>%
-    setDT()
-  dt_score_energy[,name_sel := colnames(array_sel)]
+    data.table::setDT()
+  dt_score_energy[,name_sample := colnames(array_sample)]
 }
 
 
-## calcul des scores quantiles pour une colonne
-get_dt_score_quantile_one_col <- function(array_sel, dt_complet_sorted, dt_complet_quantiles, quantile_pointe = 0.998){
+#' compute quantile scores for a single column
+#' @param array_sample array of samples to test, one sample by column
+#' @param dt_series_one_col data.table with two columns block_id and value
+#' @param upper_quantile_boundary num boundary for specific score on the upper quantiles
+#' @export
+get_dt_score_quantile_one_col <- function(array_sample, dt_series_one_col, upper_quantile_boundary = 0.998){
 
-  nrow_sel <- nrow(dt_complet_sorted[.(array_sel[,1]), on = "mcYear"])
-  nb_year_sel <- nrow(array_sel)
-  quantile_vec_allyears <- seq(1/nrow_sel*nb_year_sel, 1-1/nrow_sel*nb_year_sel, by = 1/nrow_sel*nb_year_sel)
-  quantile_position_index <- round(quantile_vec_allyears*nrow_sel)
-  quantile_position_pointe_index <- which(quantile_vec_allyears>quantile_pointe)
+  # dt_quantiles computed with all blocks
+  nrow_all_blocks <- nrow(dt_series_one_col)
+  nb_blocks <- length(unique(dt_series_one_col$block_id))
+  quantile_vec_all_blocks <- seq(1/nrow_all_blocks*nb_blocks, 1-1/nrow_all_blocks*nb_blocks, by = 1/nrow_all_blocks*nb_blocks)
 
-  dt_score_quantile <- map_dfr(seq(ncol(array_sel)), function(ii){
+  dt_quantiles <- dt_series_one_col[,.(value = quantile(value, quantile_vec_all_blocks, type = 3),
+                                       quantile_level = quantile_vec_all_blocks)]
 
-    value_estim <- sort(dt_complet_sorted[.(array_sel[,ii]), on = "mcYear"]$value)[quantile_position_index]
-    diff_vec <- dt_complet_quantiles$value - value_estim
+  # sort dt_series
+  dt_series_sorted <- data.table::copy(dt_series_one_col)
+  setnames(dt_series_sorted, ccol, "value")
+  setorder(dt_series_sorted, value)
+  setindex(dt_series_sorted, block_id)
 
+  # known quantile positions in the sample
+  nrow_sample <- nrow(dt_series_sorted[.(array_sample[,1]), on = "block_id"])
+  nb_blocks_sample <- nrow(array_sample)
+  quantile_vec_sample_blocks <- seq(1/nrow_sample*nb_blocks_sample, 1-1/nrow_sample*nb_blocks_sample, by = 1/nrow_sample*nb_blocks_sample)
+  quantile_position_index <- round(quantile_vec_sample_blocks*nrow_sample)
+  quantile_position_upper_index <- which(quantile_vec_sample_blocks>upper_quantile_boundary)
+
+  # loop over samples
+  dt_score_quantile <- purrr::map_dfr(seq(ncol(array_sample)), function(ii){
+
+    # estimated quantiles of the sample
+    value_estim <- sort(dt_series_sorted[.(array_sample[,ii]), on = "block_id"]$value)[quantile_position_index]
+    diff_vec <- dt_quantiles$value - value_estim
+
+    # scores of the estimated quantiles
     data.table(mae_q = mean(abs(diff_vec)),
                erreur_q99 = quantile(abs(diff_vec), 0.99),
-               mae_pointe = mean(abs(diff_vec[quantile_position_pointe_index])))
+               mae_pointe = mean(abs(diff_vec[quantile_position_upper_index])))
   })
 
 }
 
-## concatenation des scores quantiles pour toutes les colonnes
-get_dt_score_quantile <- function(array_sel, l_dt_complet_sorted, l_dt_complet_quantiles, ...){
+#' compute and concatenate quantile scores for multiple columns
+#' @param array_sample array of samples to test, one sample by column
+#' @param dt_series data.table of series
+#' @param col_vec a character vector with columns names for quantile score computation
+#' @export
+get_dt_score_quantile <- function(array_sample, dt_series, col_vec, ...){
 
-  dt_score_quantiles <- reduce(map(seq(length(l_dt_complet_sorted)), function(ccol){
-    dt_score_quantiles_one_col <- get_dt_score_quantile_one_col(array_sel, l_dt_complet_sorted[[ccol]], l_dt_complet_quantiles[[ccol]], ...)
-    names(dt_score_quantiles_one_col) <- paste0(names(dt_score_quantiles_one_col), "_", names(l_dt_complet_sorted)[ccol])
+  dt_score_quantiles <- purrr::reduce(purrr::map(col_vec, function(ccol){
+
+    dt_series_one_col <- dt_series[,.SD, .SDcol = c("block_id", ccol)]
+    setnames(dt_series_one_col, ccol, "value")
+    dt_score_quantiles_one_col <- get_dt_score_quantile_one_col(array_sample, dt_series_one_col, ...)
+    names(dt_score_quantiles_one_col) <- paste0(names(dt_score_quantiles_one_col), "_", ccol)
     dt_score_quantiles_one_col
   }),
   cbind)
-  dt_score_quantiles[,name_sel := colnames(array_sel)]
+  dt_score_quantiles[,name_sample := colnames(array_sample)]
 
 }
