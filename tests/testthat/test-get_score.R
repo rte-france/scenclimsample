@@ -31,6 +31,9 @@ dt_series3 <- data.table(block_id = rep(seq(2), each=1001),
 
 l_mat_A <- list(dumbA = build_euclid_dist_matrix(dt_series3))
 
+dt_score_energy_ref <- structure(list(dumbA = c(83.5417082917083, 83.5417082917082),
+               name_sample = c("sampletest1", "sampletest2")),
+          class = c("data.table", "data.frame"), row.names = c(NA, -2L))
 
 test_that("get_dt_score_energy works", {
   expect_equal(get_dt_score_energy(array_sample, l_mat_A),
