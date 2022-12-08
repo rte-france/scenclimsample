@@ -12,7 +12,7 @@ get_dt_score_avg <- function(array_sample, dt_series){
 
   # Average by block and average over all blocks
   dt_avg_over_all_blocks <- dt_series[, colMeans(.SD), .SDcols = -"block_id"]
-  dt_avg <- dt_series[, colMeans(.SD), by = "block_id"]
+  dt_avg <- dt_series[, lapply(.SD, mean), by = c("block_id")]
   setorder(dt_avg, block_id)
 
   # loop over samples
@@ -41,9 +41,10 @@ get_dt_score_avg <- function(array_sample, dt_series){
 get_dt_score_energy <- function(array_sample, l_mat_A){
 
   # Loop over matrices A
-  dt_score_energy <- purrr::map_dfc(l_mat_A, function(mat_A){
+  dt_score_energy <- purrr::imap_dfc(l_mat_A, function(mat_A, mat_A_name){
 
     Nyear_total <- nrow(mat_A)
+    Nyear_sample <- nrow(array_sample)
     w0 <- array(1/Nyear_total, c(Nyear_total,1))
 
     # precomputation
@@ -52,18 +53,27 @@ get_dt_score_energy <- function(array_sample, l_mat_A){
 
     # loop over samples
     vec_score_energy <- purrr::map_dbl(seq(ncol(array_sample)), function(ii){
-      ws <- array(0, c(Nyear_total,1))
-      ws[array_sample[, ii],1] <- 1/Nyear_total
 
-      # energy score
-      t(ws) %*% mat_A_w0 - w0_mat_A_w0_half - 0.5*t(ws) %*% mat_A %*% ws
+      # # energy score V1
+      # ws <- array(0, c(Nyear_total,1))
+      # ws[array_sample[, ii],1] <- 1/Nyear_sample
+      # t(ws) %*% mat_A_w0 - w0_mat_A_w0_half - 0.5*t(ws) %*% mat_A %*% ws
+
+      # # energy score V2
+      sum(mat_A_w0[array_sample[, ii]])/Nyear_sample - w0_mat_A_w0_half - 0.5*sum(mat_A[array_sample[, ii], array_sample[, ii]])/(Nyear_sample)^2
+
+      # # energy score V3
+      # ws_sp <- Matrix::Matrix(ws, sparse = T)
+      # as.numeric(Matrix::t(ws_sp) %*% mat_A_w0 - w0_mat_A_w0_half - 0.5*Matrix::t(ws_sp) %*% mat_A %*% ws)
+
     })
 
-    data.frame(t(vec_score_energy))
+    list_output <- list()
+    list_output[[mat_A_name]] <- vec_score_energy
+    data.frame(list_output)
   })
 
   setDT(dt_score_energy)
-  setnames(dt_score_energy, names(l_mat_A))
   dt_score_energy[,name_sample := colnames(array_sample)]
 }
 
@@ -91,7 +101,6 @@ get_dt_score_quantile_one_col <- function(array_sample, dt_series_one_col, upper
 
   # sort dt_series
   dt_series_sorted <- copy(dt_series_one_col)
-  setnames(dt_series_sorted, ccol, "value")
   setorder(dt_series_sorted, value)
   setindex(dt_series_sorted, block_id)
 
