@@ -1,0 +1,109 @@
+---
+title: "Choose a limited sample of representative years"
+author: "Jean Thorey"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Choose a limited sample of representative years}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>", 
+  echo = FALSE, 
+  message = FALSE,
+  warning = FALSE, 
+  error = FALSE,
+  fig.align = "center"
+)
+```
+
+
+## Problem description
+
+We want to find representative samples with block constraints. For example, we want to find a sample of 10 years amongst 50 years with a daily resolution. The daily resolution of the data must be preserved in the sample.
+
+Monte Carlo method : this package implements a brute force approach to compute representativeness scores
+
+TODO : add details about representativeness scores
+
+## Example
+
+Build data set
+
+```{r, echo = TRUE}
+library(lubridate)
+library(data.table)
+library(scenclimsample)
+
+set.seed(2022)
+
+# generate time series of daily data
+nb_year <- 50
+dt_series <- data.table(block_id = rep(seq(nb_year), each = 365),
+                        horodate = rep(seq(ymd_h("2001-01-01 00"), ymd_h("2001-12-31 23"), by = "day"), nb_year),
+                        value_1 = rnorm(365*nb_year),
+                        value_2 = rnorm(365*nb_year))
+```
+
+
+Compute energy score matrices
+
+```{r, echo = TRUE}
+# build list of matrices A for energy score computation
+l_mat_A <- purrr::map(c("value_1", "value_2"), function(ccol){
+  build_euclid_dist_matrix(dt_series[,.SD,.SDcols = c("block_id", ccol)])
+})
+names(l_mat_A) <- c("value_1", "value_2")
+```
+
+Generate random samples
+
+```{r, echo = TRUE}
+# build random samples
+Ntry <- 1e6
+nb_year <- max(dt_series$block_id)
+nb_year_by_sample <- 10
+
+array_sample_random <- sapply(seq(Ntry), function(x) sample.int(nb_year, nb_year_by_sample, replace = FALSE))
+colnames(array_sample_random) <- paste0("random_", seq(ncol(array_sample_random)))
+```
+
+
+Compute scores. Fast because specific implementation for uniform weights. TODO implement non-uniform weighting and Cpp implementation.
+
+```{r, echo = TRUE}
+# score computation
+print(system.time({dt_score_avg <- get_dt_score_avg(array_sample = array_sample_random, dt_series = dt_series, col_vec = c("value_1", "value_2"))}))
+print(system.time({dt_score_energy <- get_dt_score_energy(array_sample = array_sample_random, l_mat_A = l_mat_A)}))
+print(system.time({dt_score_quantile <- get_dt_score_quantile(array_sample = array_sample_random[,1:1000], dt_series = dt_series, col_vec = c("value_1", "value_2"), upper_quantile_boundary = 0.99)}))
+```
+
+Check energy scores results
+
+```{r, echo = TRUE}
+# check vs. energy::edist
+ws <- array(0, c(nb_year,1))
+ws[array_sample_random[,1],1] <- 1/nrow(array_sample_random)
+w0 <- array(1/nb_year, c(nb_year,1))
+
+mat_A <- l_mat_A$value_1
+
+# dt_score_energy
+print(dt_score_energy[1,.(value_1)])
+
+# dt_score_energy inner method
+print(t(ws) %*% mat_A %*% w0 -  0.5*t(w0) %*% mat_A %*% w0 - 0.5*t(ws) %*% mat_A %*% ws)
+
+# energy::edist
+size_edist <- c(nrow(dt_series), nrow(dt_series[block_id %in% array_sample_random[,1]]))
+edist_estim <- energy::edist(x = c(dt_series[,value_1],
+                                   dt_series[block_id %in% array_sample_random[,1],value_1]),
+                             sizes = size_edist) * sum(size_edist) / prod(size_edist) / 2
+print(edist_estim)
+
+```
+
