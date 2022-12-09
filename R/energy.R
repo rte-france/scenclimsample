@@ -41,6 +41,7 @@ build_euclid_dist_matrix <- function(dt_series){
     })
 
   mat_A <- do.call("rbind", args = mat_A)
+  mat_A <- (mat_A + t(mat_A))/2
 
   mat_A
 }

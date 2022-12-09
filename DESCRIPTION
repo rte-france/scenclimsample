@@ -1,0 +1,20 @@
+Package: scenclimsample
+Type: Package
+Title: Sample block time series such as climate scenarios
+Version: 0.1.0
+Author: Jean Thorey
+Maintainer: Jean Thorey <jean.thorey@rte-france.com>
+Description: Sample block time series such as climate scenarios with multiple 
+    sampling scores.
+License: MPL
+Encoding: UTF-8
+LazyData: true
+Imports:
+    purrr,
+    data.table,
+    fields
+RoxygenNote: 7.1.1
+Suggests: 
+    testthat (>= 3.0.0), energy, knitr, rmarkdown
+Config/testthat/edition: 3
+VignetteBuilder: knitr

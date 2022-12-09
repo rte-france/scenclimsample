@@ -2,31 +2,46 @@
 #'
 #' @param array_sample array of samples to test, one sample by column
 #' @param dt_series data.table of series
+#' @param col_vec a character vector with columns names for quantile score computation
 #'
 #' @return a data.table of scores, one row per sample
 #'
 #' @export
 #' @import data.table
 #'
-get_dt_score_avg <- function(array_sample, dt_series){
+get_dt_score_avg <- function(array_sample, dt_series, col_vec = NULL){
+
+
+  if (is.null(col_vec)){
+    col_vec <- grep("^block_id$", names(dt_series), value = TRUE, invert = TRUE)
+  }
 
   # Average by block and average over all blocks
-  dt_avg_over_all_blocks <- dt_series[, colMeans(.SD), .SDcols = -"block_id"]
+  dt_avg_over_all_blocks <- dt_series[, lapply(.SD, mean), .SDcols = -"block_id"]
   dt_avg <- dt_series[, lapply(.SD, mean), by = c("block_id")]
   setorder(dt_avg, block_id)
 
-  # loop over samples
-  dt_avg_sample <- purrr::map_dfr(seq(ncol(array_sample)), function(ii){
-    dt_avg[array_sample[, ii], colMeans(.SD), .SDcols = -"block_id"]
-  })
-  dt_avg_sample$name_sample = colnames(array_sample)
-  setDT(dt_avg_sample)
+  # Loop over col_vec
+  dt_score_avg <- purrr::map_dfc(col_vec, function(ccol){
 
-  # scoring
-  dt_score_avg <- abs(dt_avg_over_all_blocks[rep(1, nrow(dt_avg_sample))] - dt_avg_sample[,.SD, .SDcols = -"name_sample"])
-  dt_score_avg[,name_sample := dt_avg_sample$name_sample]
+    vec_avg <- dt_avg[[ccol]]
+    avg_over_all_blocks <- dt_avg_over_all_blocks[[ccol]]
+
+      # Loop over samples
+      vec_score_avg_sample <- purrr::map_dbl(seq(ncol(array_sample)), function(ii){
+        abs(mean(vec_avg[array_sample[, ii]]) - avg_over_all_blocks)
+      })
+      list_output <- list()
+      list_output[[ccol]] <- vec_score_avg_sample
+      data.frame(list_output)
+  })
+
+
+  setDT(dt_score_avg)
+  dt_score_avg[,name_sample := colnames(array_sample)]
   dt_score_avg
 }
+
 
 #' Compute energy scores
 #'
@@ -127,7 +142,6 @@ get_dt_score_quantile_one_col <- function(array_sample, dt_series_one_col, upper
 }
 
 
-
 #' Compute and concatenate quantile scores for multiple columns
 #'
 #' @param array_sample array of samples to test, one sample by column
@@ -140,7 +154,11 @@ get_dt_score_quantile_one_col <- function(array_sample, dt_series_one_col, upper
 #' @export
 #' @import data.table
 #'
-get_dt_score_quantile <- function(array_sample, dt_series, col_vec, ...){
+get_dt_score_quantile <- function(array_sample, dt_series, col_vec = NULL, ...){
+
+  if (is.null(col_vec)){
+    col_vec <- grep("^block_id$", names(dt_series), value = TRUE, invert = TRUE)
+  }
 
   dt_score_quantiles <- purrr::reduce(purrr::map(col_vec, function(ccol){
 
