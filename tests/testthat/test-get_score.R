@@ -1,3 +1,6 @@
+# Copyright (C) 2021-2022, RTE (http://www.rte-france.com)
+# SPDX-License-Identifier: MPL-2.0
+
 ## Test moyenne par colonne
 dt_series <- data.table(block_id = rep(seq(2), each=3),
                         value01 = c(rep(0, 3), seq(3)))

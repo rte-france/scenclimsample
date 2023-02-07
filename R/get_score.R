@@ -1,3 +1,6 @@
+# Copyright (C) 2021-2022, RTE (http://www.rte-france.com)
+# SPDX-License-Identifier: MPL-2.0
+
 #' Compute average mean absolute error for all columns
 #'
 #' @param array_sample array of samples to test, one sample by column
