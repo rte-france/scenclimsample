@@ -6,7 +6,7 @@ Author: Jean Thorey
 Maintainer: Jean Thorey <jean.thorey@rte-france.com>
 Description: Sample block time series such as climate scenarios with multiple 
     sampling scores.
-License: MPL 2.0
+License: MPL-2.0 AND GPL-2.0-only 
 Encoding: UTF-8
 LazyData: true
 Imports:

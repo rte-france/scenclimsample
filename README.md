@@ -26,5 +26,4 @@ Copyright 2022-2023 RTE France
 
     RTE: http://www.rte-france.com
 
-This Source Code is subject to the terms of the Mozilla Public License (MPL) v2 also available
-[here](https://www.mozilla.org/en-US/MPL/2.0/)
+This Source Code is subject to the terms of the Mozilla Public License version 2 (MPL-2.0) and GNU General Public License version 2 (GPL-2.0-only) as a consequence of package dependencies.
