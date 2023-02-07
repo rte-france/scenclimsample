@@ -1,4 +1,4 @@
-# Copyright (C) 2021-2022, RTE (http://www.rte-france.com)
+# Copyright (C) 2022-2023, RTE (http://www.rte-france.com)
 # SPDX-License-Identifier: MPL-2.0
 
 ## Test moyenne par colonne

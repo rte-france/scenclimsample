@@ -1,4 +1,4 @@
-# Copyright (C) 2021-2022, RTE (http://www.rte-france.com)
+# Copyright (C) 2022-2023, RTE (http://www.rte-france.com)
 # SPDX-License-Identifier: MPL-2.0
 
 mat_init <- t(array(c(3, 4, 5, 2, 1, 1, 1, 0), c(4, 2)))
