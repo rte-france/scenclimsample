@@ -109,32 +109,33 @@ get_dt_score_energy <- function(array_sample, l_mat_A){
 #'
 get_dt_score_quantile_one_col <- function(array_sample, dt_series_one_col, upper_quantile_boundary = 0.998){
 
-  # dt_quantiles computed with all blocks
-  nrow_all_blocks <- nrow(dt_series_one_col)
-  nb_blocks <- length(unique(dt_series_one_col$block_id))
-  quantile_vec_all_blocks <- seq(1/nrow_all_blocks*nb_blocks, 1-1/nrow_all_blocks*nb_blocks, by = 1/nrow_all_blocks*nb_blocks)
-
-  dt_quantiles <- dt_series_one_col[,.(value = stats::quantile(value, quantile_vec_all_blocks, type = 3),
-                                       quantile_level = quantile_vec_all_blocks)]
-
   # sort dt_series
   dt_series_sorted <- copy(dt_series_one_col)
   setorder(dt_series_sorted, value)
   setindex(dt_series_sorted, block_id)
 
-  # known quantile positions in the sample
+  # quantiles computed with all blocks
+  nrow_all_blocks <- nrow(dt_series_one_col)
+  nb_blocks <- length(unique(dt_series_one_col$block_id))
+
   nrow_sample <- nrow(dt_series_sorted[.(array_sample[,1]), on = "block_id"])
   nb_blocks_sample <- nrow(array_sample)
-  quantile_vec_sample_blocks <- seq(1/nrow_sample*nb_blocks_sample, 1-1/nrow_sample*nb_blocks_sample, by = 1/nrow_sample*nb_blocks_sample)
-  quantile_position_index <- round(quantile_vec_sample_blocks*nrow_sample)
-  quantile_position_upper_index <- which(quantile_vec_sample_blocks>upper_quantile_boundary)
+
+  nb_quantiles <- floor(nrow_all_blocks/nb_blocks)
+  quantile_vec <- seq(round(nb_blocks/2), nrow_all_blocks-nb_blocks/2, by = nb_blocks)/nrow_all_blocks
+  quantile_position_upper_index <- which(quantile_vec>upper_quantile_boundary)
+
+  quantile_position_index_all_blocks <- quantile(seq(nrow_all_blocks), quantile_vec, type = 1)
+  quantile_position_index <- quantile(seq(nrow_sample), quantile_vec, type = 1)
+
+  value_obs <- dt_series_sorted$value[quantile_position_index_all_blocks]
 
   # loop over samples
   dt_score_quantile <- purrr::map_dfr(seq(ncol(array_sample)), function(ii){
 
     # estimated quantiles of the sample
     value_estim <- sort(dt_series_sorted[.(array_sample[,ii]), on = "block_id"]$value)[quantile_position_index]
-    diff_vec <- dt_quantiles$value - value_estim
+    diff_vec <- value_obs - value_estim
 
     # scores of the estimated quantiles
     data.table(mae_q = mean(abs(diff_vec)),

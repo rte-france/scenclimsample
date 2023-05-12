@@ -15,8 +15,8 @@ test_that("get_dt_score_avg works", {
 
 
 ## Test get_dt_score_quantile_one_col
-dt_series2 <- data.table(block_id = rep(seq(2), each=1001),
-                        value01 = c(rep(0, 1001), seq(1001)))
+dt_series2 <- data.table(block_id = rep(seq(2), each=1000),
+                        value01 = c(rep(0, 1000), seq(1000)))
 dt_score_quantile_ref <- structure(list(mae_q_value01 = c(250, 250.5),
                                         erreur_q99_value01 = c(979.02, 495.01),
                                         mae_pointe_value01 = c(500, 250.5),
