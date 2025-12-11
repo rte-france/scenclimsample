@@ -14,34 +14,30 @@
 #'
 get_dt_score_avg <- function(array_sample, dt_series, col_vec = NULL){
 
-
   if (is.null(col_vec)){
     col_vec <- grep("^block_id$", names(dt_series), value = TRUE, invert = TRUE)
   }
 
-  # Average by block and average over all blocks
-  dt_avg_over_all_blocks <- dt_series[, lapply(.SD, mean), .SDcols = -"block_id"]
-  dt_avg <- dt_series[, lapply(.SD, mean), by = c("block_id")]
+  dt_avg_over_all_blocks <- dt_series[, lapply(.SD, mean), .SDcols = col_vec]
+
+  dt_avg <- dt_series[, lapply(.SD, mean), by = block_id]
   setorder(dt_avg, block_id)
 
-  # Loop over col_vec
-  dt_score_avg <- purrr::map_dfc(col_vec, function(ccol){
+  mat_avg <- as.matrix(dt_avg[, ..col_vec])
+  vec_avg_all <- as.numeric(dt_avg_over_all_blocks[1, ..col_vec])
 
-    vec_avg <- dt_avg[[ccol]]
-    avg_over_all_blocks <- dt_avg_over_all_blocks[[ccol]]
-
-      # Loop over samples
-      vec_score_avg_sample <- purrr::map_dbl(seq(ncol(array_sample)), function(ii){
-        abs(mean(vec_avg[array_sample[, ii]]) - avg_over_all_blocks)
-      })
-      list_output <- list()
-      list_output[[ccol]] <- vec_score_avg_sample
-      data.frame(list_output)
+  mat_score <- sapply(seq_len(ncol(array_sample)), function(ii) {
+    abs(colMeans(mat_avg[array_sample[, ii], , drop = FALSE]) - vec_avg_all)
   })
 
+  if(length(col_vec)>1){
+    dt_score_avg <- as.data.table(t(mat_score))
+  } else {
+    dt_score_avg <- as.data.table(list(V1 = mat_score))
+  }
 
-  setDT(dt_score_avg)
-  dt_score_avg[,name_sample := colnames(array_sample)]
+  setnames(dt_score_avg, col_vec)
+  dt_score_avg[, name_sample := colnames(array_sample)]
   dt_score_avg
 }
 
@@ -177,3 +173,76 @@ get_dt_score_quantile <- function(array_sample, dt_series, col_vec = NULL, ...){
 
 }
 
+#' Compute and concatenate quantile scores for multiple columns, fast version
+#'
+#' @param array_sample array of samples to test, one sample by column
+#' @param dt_series data.table of series
+#' @param col_vec a character vector with columns names for quantile score computation
+#' @param ... Other arguments passed to internal get_dt_score_quantile_one_col
+#'
+#' @return a data.table of scores, one row per sample
+#'
+#' @export
+#' @import data.table
+#'
+get_dt_score_quantile_fast <- function(array_sample, dt_series, col_vec = NULL, upper_quantile_boundary = 0.998) {
+  if (is.null(col_vec)) {
+    col_vec <- setdiff(names(dt_series), "block_id")
+  }
+
+  if(ncol(array_sample)>0){
+
+    outlist <- furrr::future_map(col_vec, function(ccol) {
+      value_vec <- dt_series[[ccol]]
+      dtval <- data.table(block_id = dt_series$block_id, value = value_vec)
+      setkey(dtval, block_id)
+      value_sorted <- sort(value_vec)
+      n_all <- length(value_sorted)
+      nb_blocks <- uniqueN(dtval$block_id)
+      quantile_vec_all <- seq(1/(n_all)*nb_blocks/2, 1-1/(n_all)*nb_blocks/2, by=1/(n_all)*nb_blocks)
+      quantile_idx_all <- round(quantile_vec_all * n_all)
+      quantile_idx_all <- pmax(1, pmin(n_all, quantile_idx_all))
+      value_obs <- value_sorted[quantile_idx_all]
+      n_sample <- ncol(array_sample)
+
+      idx <- array_sample[, 1]
+      sample_vals <- dtval[J(idx), value]
+      # sample_sorted <- sort(sample_vals)
+      n_samp <- length(sample_vals)
+      quantile_vec_samp <- seq(1/(n_samp)*length(idx)/2, 1-1/(n_samp)*length(idx)/2, by=1/(n_samp)*length(idx))
+      quantile_idx_samp0 <- quantile_vec_samp * n_samp
+      quantile_idx_samp <- round(quantile_idx_samp0 + 1e-10) ## rounding 5 at even digit
+      quantile_idx_samp <- pmax(1, pmin(n_samp, quantile_idx_samp))
+
+      upper_idx <- which(quantile_vec_samp > upper_quantile_boundary)
+
+
+      results <- vector("list", n_sample)
+      for (ii in seq_len(n_sample)) {
+        idx <- array_sample[, ii]
+        sample_vals <- dtval[J(idx), value]
+        sample_sorted <- sort(sample_vals)
+        # n_samp <- length(sample_sorted)
+
+        value_estim <- sample_sorted[quantile_idx_samp]
+        diff_vec <- value_obs - value_estim
+        abs_diff_vec <- abs(diff_vec)
+        results[[ii]] <- list(
+          mae_q = mean(abs_diff_vec),
+          erreur_q99 = quantile(abs_diff_vec, 0.99),
+          mae_pointe = mean(abs(diff_vec[upper_idx]))
+        )
+      }
+
+      dt_out <- rbindlist(results)
+      setnames(dt_out, c("mae_q", "erreur_q99", "mae_pointe"),
+               paste0(c("mae_q_", "erreur_q99_", "mae_pointe_"), ccol))
+      dt_out
+    })
+    dt_score_quantile <- do.call(cbind, outlist)
+    dt_score_quantile[, name_sample := colnames(array_sample)]
+  } else {
+    dt_score_quantile <- data.table()
+  }
+  dt_score_quantile[]
+}

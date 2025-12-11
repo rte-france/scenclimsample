@@ -80,6 +80,14 @@ Compute scores. Fast because specific implementation for uniform weights. TODO i
 print(system.time({dt_score_avg <- get_dt_score_avg(array_sample = array_sample_random, dt_series = dt_series, col_vec = c("value_1", "value_2"))}))
 print(system.time({dt_score_energy <- get_dt_score_energy(array_sample = array_sample_random, l_mat_A = l_mat_A)}))
 print(system.time({dt_score_quantile <- get_dt_score_quantile(array_sample = array_sample_random[,1:1000], dt_series = dt_series, col_vec = c("value_1", "value_2"), upper_quantile_boundary = 0.99)}))
+
+
+# library(future)
+# library(furrr)
+# plan(multisession, workers = 4)
+# print(system.time({dt_score_quantile <- get_dt_score_quantile_fast(array_sample = array_sample_random[,1:1000], dt_series = dt_series, col_vec = c("value_1", "value_2"), upper_quantile_boundary = 0.99)}))
+
+
 ```
 
 Check energy scores results

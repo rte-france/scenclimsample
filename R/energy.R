@@ -36,14 +36,17 @@ build_euclid_dist_matrix <- function(dt_series){
   block_length <- dt_series[,.N, by = block_id][,mean(N)]
 
   mat_A <- purrr::map(unique_blocks, function(ii_block){
-
+    ii_block_below <- seq(ii_block)
     row_mat_A <- fields::rdist(x1 = dt_series[.(ii_block),.SD,.SDcols = -c("block_id"), on = "block_id"],
-                  x2 = dt_series[,.SD,.SDcols = -c("block_id")])
-    matrixblockmean(row_mat_A, block_length, block_length)
-    })
+                               x2 = dt_series[.(ii_block_below),.SD,.SDcols = -c("block_id"), on = "block_id"])
+    row_mat_A_mean <- c(matrixblockmean(row_mat_A, block_length, block_length), rep(0, nblocks - ii_block))
+
+    row_mat_A_mean[ii_block] <- row_mat_A_mean[ii_block]/2
+    row_mat_A_mean
+  })
 
   mat_A <- do.call("rbind", args = mat_A)
-  mat_A <- (mat_A + t(mat_A))/2
+  mat_A <- (mat_A + t(mat_A))
 
   mat_A
 }
