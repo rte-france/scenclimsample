@@ -63,3 +63,22 @@ test_that("get_dt_score_energy works", {
 })
 
 
+test_that("build_l_block_cdf returns correct structure and values", {
+  dt <- data.table(block_id = rep(1:2, each=3), v1 = 1:6, v2 = 6:1)
+  res <- build_l_block_cdf(dt, col_vec = c("v1", "v2"))
+  expect_type(res, "list")
+  expect_equal(names(res), c("v1", "v2"))
+  expect_equal(res$v1[,1], ecdf(1:3)(1:3))
+  expect_equal(res$v2[,2], ecdf(4:6)(4:6))
+})
+
+
+test_that("get_dt_score_CDF_parallel works on toy example", {
+  dt <- data.table(block_id = rep(1:2, each=3), value01 = 1:6)
+  l_ref <- build_l_block_cdf(dt, col_vec = "value01")
+  array_sample <- array(1:2, c(1,2)); colnames(array_sample) <- c("sampletest1", "sampletest2")
+  res <- get_dt_score_CDF_parallel(array_sample, l_ref)
+  expect_s3_class(res, "data.table")
+  expect_equal(res$name_sample, c("sampletest1","sampletest2"))
+})
+
