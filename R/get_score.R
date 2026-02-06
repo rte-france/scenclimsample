@@ -317,7 +317,8 @@ get_dt_score_CDF_parallel <- function(array_sample, l_block_cdf, upper_quantile_
   n_sample <- ncol(array_sample)
   n_grid <- nrow(l_block_cdf[[1]])
 
-  upper_idx <- which(seq(1/n_grid/2, 1-1/n_grid/2, by=1/n_grid) > upper_quantile_boundary)
+  seq_grid <- seq(1/n_grid/2, 1-1/n_grid/2, by=1/n_grid)
+  upper_idx <- which(seq_grid >= min(upper_quantile_boundary, max(seq_grid)))
 
   outlist <- furrr::future_imap(l_block_cdf, function(block_cdf, ccol) {
 
