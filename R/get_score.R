@@ -60,7 +60,7 @@ get_dt_score_avg <- function(array_sample, dt_series, col_vec = NULL, ref_block_
 get_dt_score_energy <- function(array_sample, l_mat_A, ref_block_id = NULL){
 
   # Loop over matrices A
-  dt_score_energy <- purrr::imap_dfc(l_mat_A, function(mat_A, mat_A_name, ref_block_id = NULL){
+  dt_score_energy <- furrr::future_imap_dfc(l_mat_A, function(mat_A, mat_A_name){
 
     Nyear_total <- nrow(mat_A)
     Nyear_sample <- nrow(array_sample)
