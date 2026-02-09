@@ -24,9 +24,7 @@ test_that("get_dt_score_avg works : multiple column", {
 })
 
 
-## Test get_dt_score_quantile_one_col
-
-dt_score_avg_ref <- data.table(value01 = c(1, 1), name_sample = c("sampletest1", "sampletest2"))
+## Test get_dt_score_quantile
 
 dt_series2 <- data.table(block_id = rep(seq(2), each=1000),
                         value01 = c(rep(0, 1000), seq(1000)))
@@ -41,11 +39,6 @@ test_that("get_dt_score_quantile works", {
                  dt_score_quantile_ref)
 })
 
-
-test_that("get_dt_score_quantile fast version works", {
-  expect_equal(get_dt_score_quantile_fast(array_sample, dt_series2, col_vec = c("value01"), upper_quantile_boundary = 0.5),
-               dt_score_quantile_ref)
-})
 
 ## Test get_dt_score_energy
 dt_series3 <- data.table(block_id = rep(seq(2), each=1001),
@@ -90,7 +83,7 @@ test_that("get_dt_score_CDF_parallel works on toy example", {
   dt <- data.table(block_id = rep(1:2, each=4), v1 = 1:8, v2 = 8:1)
   l_ref <- build_l_block_cdf(dt, col_vec = "v1")
   array_sample <- array(1:2, c(1,2)); colnames(array_sample) <- c("sampletest1", "sampletest2")
-  res <- get_dt_score_CDF_parallel(array_sample, l_ref)
+  res <- get_dt_score_CDF(array_sample, l_ref)
   expect_s3_class(res, "data.table")
   expect_equal(res$name_sample, c("sampletest1","sampletest2"))
 })

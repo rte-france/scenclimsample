@@ -2,10 +2,8 @@
 
 export(build_euclid_dist_matrix)
 export(build_l_block_cdf)
-export(get_dt_score_CDF_parallel)
+export(get_dt_score_CDF)
 export(get_dt_score_avg)
 export(get_dt_score_energy)
 export(get_dt_score_quantile)
-export(get_dt_score_quantile_fast)
-export(get_dt_score_quantile_one_col)
 import(data.table)
