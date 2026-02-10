@@ -184,55 +184,7 @@ get_dt_score_quantile <- function(array_sample, dt_series, col_vec = NULL, upper
 }
 
 
-
-#' build_l_block_cdf
-#'
-#' Compute blockwise empirical CDFs for specified columns in a data.table.
-#'
-#' @param dt_series data.table with a 'block_id' column and numeric columns.
-#' @param col_vec character vector of column names to compute CDFs for. If NULL, all except 'block_id'.
-#'
-#' @return named list of matrices where each matrix is blockwise CDFs (rows: quantile grid, cols: blocks).
-#' @examples
-#' dt <- data.table(block_id = rep(1:3, each = 10), val1 = rnorm(30), val2 = rnorm(30))
-#' build_l_block_cdf(dt, col_vec = c("val1", "val2"))
-#' @export
-#' @import data.table
-#'
-build_l_block_cdf <- function(dt_series, col_vec = NULL){
-
-  if (is.null(col_vec)){
-    col_vec <- grep("^block_id$", names(dt_series), value = TRUE, invert = TRUE)
-  }
-
-  n_blocks <- uniqueN(dt_series$block_id)
-  qvec <- get_quantile_idx_all(n_all = nrow(dt_series), n_blocks)/nrow(dt_series)
-
-  l_out <- purrr::map(col_vec, function(ccol){
-
-    dt_tmp <- copy(dt_series[,.SD, .SDcols = c("block_id", ccol)])
-    dt_tmp[,idx := seq(.N), by = .(block_id)]
-
-    X <- dcast(dt_tmp, idx ~ block_id, value.var = ccol)
-    X[["idx"]] <- NULL
-    X <- as.matrix(X)
-    q_grid <- quantile(dt_series[[ccol]], probs = qvec)
-
-    # CDF values
-    block_cdf <- matrix(0, nrow = length(qvec), ncol = n_blocks)
-
-    for (b in seq_len(n_blocks)) {
-      block_cdf[, b] <- colMeans(outer(X[, b], q_grid, `<=`))
-    }
-    block_cdf
-  })
-
-  names(l_out) <- col_vec
-  l_out
-
-}
-
-#' get_dt_score_CDF_parallel
+#' get_dt_score_CDF
 #'
 #' Compute three CDF-based scores for each sample subset and each variable (mae_cdf, erreur_ks99, mae_cdfpointe).
 #'
@@ -248,50 +200,72 @@ build_l_block_cdf <- function(dt_series, col_vec = NULL){
 #' @export
 #' @import data.table
 #'
-get_dt_score_CDF <- function(array_sample, l_block_cdf, upper_quantile_boundary = 0.998, ref_block_id = NULL){
+get_dt_score_CDF <- function(array_sample,
+                                  l_block_cdf,
+                                  upper_quantile_boundary = 0.998,
+                                  ref_block_id = NULL) {
 
   n_sample <- ncol(array_sample)
-  n_grid <- nrow(l_block_cdf[[1]])
+  n_grid   <- nrow(l_block_cdf[[1]])
 
+  ## grid cutoff index (no seq / which)
   seq_grid <- seq(1/n_grid/2, 1-1/n_grid/2, by=1/n_grid)
   upper_idx <- which(seq_grid >= min(upper_quantile_boundary, max(seq_grid)))
 
   outlist <- furrr::future_imap(l_block_cdf, function(block_cdf, ccol) {
 
-    if (is.null(ref_block_id)){
+    block_cdf <- l_block_cdf[[ccol]]
+
+    ## reference CDF
+    if (is.null(ref_block_id)) {
       full_cdf <- rowMeans(block_cdf)
     } else {
-      full_cdf <- rowMeans(block_cdf[,ref_block_id])
+      full_cdf <- rowMeans(block_cdf[, ref_block_id, drop = FALSE])
     }
 
-    full_cdf <- rowMeans(block_cdf)
+    ## compute all subset CDFs at once
+    ## result: n_grid × n_sample
+    subset_cdf <- matrix(0, n_grid, n_sample)
 
-    results <- vector("list", n_sample)
-    for (ii in seq_len(n_sample)) {
-      idx <- array_sample[, ii]
-      subset_cdf <- rowMeans(block_cdf[, idx, drop = FALSE])
-      abs_diff_vec <- abs(full_cdf - subset_cdf)
-
-
-      results[[ii]] <- list(
-        mae_cdf = mean(abs_diff_vec),
-        erreur_ks99 = quantile(abs_diff_vec, 0.99),
-        mae_cdfpointe = mean(abs_diff_vec[upper_idx])
-      )
-
+    for (j in seq_len(n_sample)) {
+      subset_cdf[, j] <- rowMeans(block_cdf[, array_sample[, j], drop = FALSE])
     }
-    dt_out <- rbindlist(results)
-    setnames(dt_out, c("mae_cdf", "erreur_ks99", "mae_cdfpointe"),
-             paste0(c("mae_cdf_", "erreur_ks99_", "mae_cdfpointe_"), ccol))
-    dt_out
+
+    ## absolute differences (vectorized)
+    abs_diff <- abs(subset_cdf - full_cdf)
+
+    ## metrics (all samples at once)
+
+    mae <- colMeans(abs_diff)
+
+    ## KS99 via partial sort (MUCH faster than quantile)
+    # k99_idx <- ceiling(0.99 * n_grid)
+    # ks99 <- apply(abs_diff, 2, function(x)
+    #   sort(x, partial = k99_idx)[k99_idx])
+    ks99 <- apply(abs_diff, 2, function(x)
+      quantile(x, 0.99))
+
+    mae_tail <- colMeans(abs_diff[upper_idx, , drop = FALSE])
+
+    dt_out <- data.table(
+      mae,
+      ks99,
+      mae_tail
+    )
+
+    setnames(
+      dt_out,
+      paste0(c("mae_cdf_", "erreur_ks99_", "mae_cdfpointe_"), ccol)
+    )
   })
 
   names(outlist) <- NULL
   dt_score_cdf <- do.call(cbind, outlist)
   dt_score_cdf[, name_sample := colnames(array_sample)]
   dt_score_cdf[]
-
 }
+
+
 
 
 get_quantile_idx_all <- function(n_all, nb_blocks){
