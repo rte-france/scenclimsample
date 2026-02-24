@@ -32,11 +32,12 @@ build_l_block_cdf <- function(dt_series, col_vec = NULL){
     q_grid <- quantile(dt_series[[ccol]], probs = qvec)
 
     # CDF values
-    block_cdf <- matrix(0, nrow = length(qvec), ncol = n_blocks)
+    block_cdf <- apply(X, 2, function(x){
+      findInterval(q_grid, sort(x), rightmost.closed = TRUE)/length(x)
+    })
+    if (!is.matrix(block_cdf)) block_cdf <- matrix(block_cdf, ncol = n_blocks)
+    setattr(block_cdf, "dimnames", NULL)
 
-    for (b in seq_len(n_blocks)) {
-      block_cdf[, b] <- colMeans(outer(X[, b], q_grid, `<=`))
-    }
     block_cdf
   })
 
