@@ -12,106 +12,137 @@ vignette: >
 ```{r setup, include = FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
-  comment = "#>", 
-  echo = FALSE, 
+  comment = "#>",
+  echo = TRUE,
   message = FALSE,
-  warning = FALSE, 
+  warning = FALSE,
   error = FALSE,
   fig.align = "center"
 )
 ```
 
-
 ## Problem description
 
-We want to find representative samples with block constraints. For example, we want to find a sample of 10 years amongst 50 years with a daily resolution. The daily resolution of the data must be preserved in the sample.
+We want to extract representative samples of block time series (for example, select
+a subset of years among a longer climate record) while preserving the intra-block
+resolution (daily data inside each year). The package provides several scores to
+evaluate how representative a candidate subset is compared to the full dataset.
 
-Monte Carlo method : this package implements a brute force approach to compute representativeness scores
+The general workflow is:
 
-TODO : add details about representativeness scores
+1. Generate or import a block time series.
+2. Precompute objects needed by the scores.
+3. Draw candidate samples.
+4. Compute scores and benchmark their durations.
 
 ## Example
 
-Build data set
+### Build a dataset
 
-```{r, echo = TRUE}
+```{r}
 library(lubridate)
 library(data.table)
 library(scenclimsample)
 
 set.seed(2022)
 
-# generate time series of daily data
-nb_year <- 50
-dt_series <- data.table(block_id = rep(seq(nb_year), each = 365),
-                        horodate = rep(seq(ymd_h("2001-01-01 00"), ymd_h("2001-12-31 23"), by = "day"), nb_year),
-                        value_1 = rnorm(365*nb_year),
-                        value_2 = rnorm(365*nb_year))
+nb_year_total <- 30
+nb_days <- 365
+
+dt_series <- data.table(
+  block_id = rep(seq_len(nb_year_total), each = nb_days),
+  horodate = rep(seq(ymd_h("2001-01-01 00"), ymd_h("2001-12-31 23"), by = "day"), nb_year_total),
+  value_1 = rnorm(nb_days * nb_year_total),
+  value_2 = 0.5 * rnorm(nb_days * nb_year_total) + 0.2 * rep(seq_len(nb_year_total), each = nb_days)
+)
+
+dt_series
 ```
 
+### Precompute objects for the scores
 
-Compute energy score matrices
+```{r}
+col_vec <- c("value_1", "value_2")
 
-```{r, echo = TRUE}
-# build list of matrices A for energy score computation
-l_mat_A <- purrr::map(c("value_1", "value_2"), function(ccol){
-  build_euclid_dist_matrix(dt_series[,.SD,.SDcols = c("block_id", ccol)])
+# Euclidean distance matrices for energy scores
+l_mat_A <- purrr::map(col_vec, function(ccol) {
+  build_euclid_dist_matrix(dt_series[, .SD, .SDcols = c("block_id", ccol)])
 })
-names(l_mat_A) <- c("value_1", "value_2")
+names(l_mat_A) <- col_vec
+
+# Block-wise CDFs for CDF scores
+l_block_cdf <- build_l_block_cdf(dt_series, col_vec = col_vec)
 ```
 
-Generate random samples
+### Generate random samples
 
-```{r, echo = TRUE}
-# build random samples
-Ntry <- 1e6
-nb_year <- max(dt_series$block_id)
-nb_year_by_sample <- 10
+```{r}
+Ntry <- 2000
+nb_year_by_sample <- 6
 
-array_sample_random <- sapply(seq(Ntry), function(x) sample.int(nb_year, nb_year_by_sample, replace = FALSE))
-colnames(array_sample_random) <- paste0("random_", seq(ncol(array_sample_random)))
+array_sample_random <- sapply(
+  seq_len(Ntry),
+  function(x) sample.int(nb_year_total, nb_year_by_sample, replace = FALSE)
+)
+colnames(array_sample_random) <- paste0("random_", seq_len(ncol(array_sample_random)))
+
+array_sample_random[, 1:5]
 ```
 
+### Compute all scores and benchmark durations
 
-Compute scores. Fast because specific implementation for uniform weights. TODO implement non-uniform weighting and Cpp implementation.
+```{r}
+timing_avg <- system.time({
+  dt_score_avg <- get_dt_score_avg(
+    array_sample = array_sample_random,
+    dt_series = dt_series,
+    col_vec = col_vec)
+})
 
-```{r, echo = TRUE}
-# score computation
-print(system.time({dt_score_avg <- get_dt_score_avg(array_sample = array_sample_random, dt_series = dt_series, col_vec = c("value_1", "value_2"))}))
-print(system.time({dt_score_energy <- get_dt_score_energy(array_sample = array_sample_random, l_mat_A = l_mat_A)}))
-print(system.time({dt_score_quantile <- get_dt_score_quantile(array_sample = array_sample_random[,1:1000], dt_series = dt_series, col_vec = c("value_1", "value_2"), upper_quantile_boundary = 0.99)}))
+timing_energy <- system.time({
+  dt_score_energy <- get_dt_score_energy(
+    array_sample = array_sample_random,
+    l_mat_A = l_mat_A)
+})
 
+timing_cdf <- system.time({
+  dt_score_cdf <- get_dt_score_CDF(
+    array_sample = array_sample_random,
+    l_block_cdf = l_block_cdf,
+    upper_quantile_boundary = 0.99)
+})
 
-# library(future)
-# library(furrr)
-# plan(multisession, workers = 4)
-# print(system.time({dt_score_quantile <- get_dt_score_quantile_fast(array_sample = array_sample_random[,1:1000], dt_series = dt_series, col_vec = c("value_1", "value_2"), upper_quantile_boundary = 0.99)}))
+timing_quantile <- system.time({
+  dt_score_quantile <- get_dt_score_quantile(
+    array_sample = array_sample_random,
+    dt_series = dt_series,
+    col_vec = col_vec,
+    upper_quantile_boundary = 0.99)
+})
 
+benchmark <- data.table(
+  score = c("avg", "energy", "cdf", "quantile"),
+  elapsed_sec = c(
+    as.numeric(timing_avg["elapsed"]),
+    as.numeric(timing_energy["elapsed"]),
+    as.numeric(timing_cdf["elapsed"]),
+    as.numeric(timing_quantile["elapsed"])
+  )
+)
+benchmark
+```
+
+### Inspect score outputs
+
+```{r}
+
+head(dt_score_avg)
+head(dt_score_energy)
+head(dt_score_quantile)
+head(dt_score_cdf)
 
 ```
 
-Check energy scores results
-
-```{r, echo = TRUE}
-# check vs. energy::edist
-ws <- array(0, c(nb_year,1))
-ws[array_sample_random[,1],1] <- 1/nrow(array_sample_random)
-w0 <- array(1/nb_year, c(nb_year,1))
-
-mat_A <- l_mat_A$value_1
-
-# dt_score_energy
-print(dt_score_energy[1,.(value_1)])
-
-# dt_score_energy inner method
-print(t(ws) %*% mat_A %*% w0 -  0.5*t(w0) %*% mat_A %*% w0 - 0.5*t(ws) %*% mat_A %*% ws)
-
-# energy::edist
-size_edist <- c(nrow(dt_series), nrow(dt_series[block_id %in% array_sample_random[,1]]))
-edist_estim <- energy::edist(x = c(dt_series[,value_1],
-                                   dt_series[block_id %in% array_sample_random[,1],value_1]),
-                             sizes = size_edist) * sum(size_edist) / prod(size_edist) / 2
-print(edist_estim)
-
-```
-
+Each row corresponds to a candidate subset of years, and each column corresponds
+to a score. Lower values indicate a subset whose distribution is closer to the
+full dataset according to the corresponding metric.
