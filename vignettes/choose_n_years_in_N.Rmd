@@ -33,7 +33,108 @@ The general workflow is:
 1. Generate or import a block time series.
 2. Precompute objects needed by the scores.
 3. Draw candidate samples.
-4. Compute scores and benchmark their durations.
+4. Compute scores.
+
+## Score descriptions
+
+Let \(j = 1, \ldots, N\) index the blocks (years). A candidate sample is encoded by
+weights \(u \in \mathbb{R}^N\) (uniform on the selected years), and the full dataset
+is represented by \(v = \left(\frac{1}{N}, \ldots, \frac{1}{N}\right)\). For a variable
+\(X\), each block \(j\) defines a distribution \(F_j\).
+
+### Mean score
+
+Let \(m_j = \mathbb{E}[X \mid j]\) be the mean in block \(j\). The mean score compares
+the sample mean to the full mean:
+\[
+S_{\text{avg}} = \left| u^\top m - v^\top m \right| .
+\]
+
+### Energy score
+
+Let \(A\) be the matrix with entries \(A_{jk} = \mathbb{E}\left(\|X_j - X_k\|\right)\)
+computed from block-wise Euclidean distances. The energy score is
+\[
+S_{\text{energy}} = u^\top A v - \frac{1}{2}u^\top A u - \frac{1}{2}v^\top A v .
+\]
+
+### CDF score
+
+Define a grid \(x_1, \ldots, x_G\) (typically quantiles of the full dataset). The CDF
+of the sample mixture is \(\widehat{F}_u(x_g) = \sum_j u_j F_j(x_g)\), and the CDF of
+the full dataset is \(F_v(x_g) = \sum_j v_j F_j(x_g)\). The CDF score is
+\[
+S_{\text{cdf}} = \frac{1}{G}\sum_{g=1}^{G} \left| \widehat{F}_u(x_g) - F_v(x_g) \right| .
+\]
+A tail-focused version is obtained by restricting the grid to \(x_g\) above a
+high quantile (e.g. \(x_g > q_{0.99}\)).
+
+### Quantile score
+
+Let \(\alpha_1, \ldots, \alpha_G\) be quantile levels and \(q_u(\alpha_g)\) (resp.
+\(q_v(\alpha_g)\)) the quantiles of the sample mixture (resp. full dataset). The
+quantile score is
+\[
+S_{\text{quantile}} = \frac{1}{G}\sum_{g=1}^{G} \left| q_u(\alpha_g) - q_v(\alpha_g) \right| .
+\]
+
+## Visual intuition for CDF and quantile scores
+
+The two plots below compare the empirical CDFs and quantiles of a full dataset
+and a candidate sample. The CDF score integrates the absolute difference between
+the two CDFs on a grid, while the quantile score averages the absolute difference
+between corresponding quantiles. The CDF and quantile scores differ in several aspects:
+
+* **Grid discretization**
+* **Tail scoring**
+* **Computation time:** the CDF score is much faster because it relies on summation, whereas the quantile score requires sorting.
+
+
+
+
+
+```{r}
+library(ggplot2)
+library(data.table)
+
+set.seed(123)
+
+full_values <- rnorm(1000, mean = 0, sd = 1)
+sample_values <- rnorm(300, mean = 0.2, sd = 1.1)
+
+grid_x <- as.numeric(quantile(full_values, probs = seq(0.01, 0.99, 0.01)))
+cdf_full <- ecdf(full_values)(grid_x)
+cdf_sample <- ecdf(sample_values)(grid_x)
+
+dt_cdf <- data.table(
+  x = rep(grid_x, 2),
+  cdf = c(cdf_full, cdf_sample),
+  dataset = rep(c("Full", "Sample"), each = length(grid_x))
+)
+
+p_cdf <- ggplot(dt_cdf, aes(x = x, y = cdf, color = dataset)) +
+  geom_line(linewidth = 1) +
+  labs(title = "Empirical CDF comparison", x = "X", y = "Probability") +
+  theme_minimal()
+
+alpha_grid <- seq(0.01, 0.99, 0.01)
+q_full <- as.numeric(quantile(full_values, probs = alpha_grid))
+q_sample <- as.numeric(quantile(sample_values, probs = alpha_grid))
+
+dt_quantile <- data.table(
+  alpha = rep(alpha_grid, 2),
+  quantile = c(q_full, q_sample),
+  dataset = rep(c("Full", "Sample"), each = length(alpha_grid))
+)
+
+p_quantile <- ggplot(dt_quantile, aes(x = alpha, y = quantile, color = dataset)) +
+  geom_line(linewidth = 1) +
+  labs(title = "Quantile comparison", x = "Probability", y = "X") +
+  theme_minimal()
+
+p_cdf
+p_quantile
+```
 
 ## Example
 
